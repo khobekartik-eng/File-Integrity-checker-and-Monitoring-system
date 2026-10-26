@@ -1,3 +1,9 @@
+
+  
+
+
+
+
 import os
 import io
 import csv
@@ -171,7 +177,51 @@ def analyze_file(filename, data):
 
 # ----- Small responsive UI embedded in this file (no templates folder required) -----
 BASE = r'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · IntegrityX</title><style>
-:root{--bg:#0b1020;--panel:#121a2e;--line:#25304b;--text:#eaf0ff;--muted:#9eaccb;--accent:#5eead4;--danger:#fda4af;--ok:#86efac}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#172647 0,#0b1020 60%);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}.nav{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:16px max(4vw,18px);border-bottom:1px solid var(--line);background:#0b1020dd;position:sticky;top:0}.brand{font-size:21px;font-weight:800;letter-spacing:.4px}.brand span{color:var(--accent)}.links{display:flex;gap:12px;flex-wrap:wrap}.links a,.btn{color:var(--text);text-decoration:none;border:1px solid var(--line);padding:9px 12px;border-radius:10px;background:#18233b;cursor:pointer}.links a:hover,.btn:hover{border-color:var(--accent)}main{max-width:1100px;margin:28px auto;padding:0 18px}.panel{background:linear-gradient(145deg,#141e35,#10182a);border:1px solid var(--line);border-radius:18px;padding:22px;margin:14px 0;box-shadow:0 10px 40px #0002}.hero{display:flex;justify-content:space-between;gap:20px;align-items:center;flex-wrap:wrap}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.metric{background:#0c1426;border:1px solid var(--line);border-radius:14px;padding:16px}.metric b{font-size:27px;display:block;color:var(--accent)}label{display:block;margin:12px 0 6px;color:#cbd5ed}input,select,textarea{width:100%;padding:12px;border-radius:10px;background:#080f1e;color:var(--text);border:1px solid #33415f}input[type=file]{padding:10px}button{font:inherit}.btn.primary{background:var(--accent);color:#06211e;font-weight:800;border-color:var(--accent)}.btn.danger{border-color:#713b50}.flash{padding:12px 14px;border:1px solid var(--line);border-radius:10px;margin:10px 0}.flash.success{border-color:#226b56;color:var(--ok)}.flash.error{border-color:#874052;color:var(--danger)}table{width:100%;border-collapse:collapse;overflow-wrap:anywhere}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted)}.pill{display:inline-block;padding:3px 8px;border-radius:20px;background:#1c2c47;font-size:12px}.small{font-size:13px}.hash{font-family:ui-monospace,monospace;overflow-wrap:anywhere}.footer{text-align:center;color:var(--muted);padding:28px}.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}ul{padding-left:22px}@media(max-width:600px){.nav{align-items:flex-start;flex-direction:column}.links{gap:6px}.links a{padding:7px 9px}.panel{padding:16px}table{font-size:13px}}
+:root{--bg:#101827;--surface:#172235;--surface-2:#1c2a3f;--line:#34445a;--text:#e7edf5;--muted:#a9b5c6;--blue:#5d91c9;--blue-hover:#76a7dc;--red:#e3a0a5;--green:#9ac7aa}
+*{box-sizing:border-box}
+html{min-height:100%;background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 "Segoe UI",Arial, sans-serif;letter-spacing:0}
+a{color:#a9c9ec;text-underline-offset:3px}
+a:hover{color:#d7e7f8}
+.nav{display:flex;gap:18px;align-items:center;justify-content:space-between;padding:13px 4%;border-bottom:1px solid var(--line);background:#121d2d;position:sticky;top:0;z-index:10}
+.brand{font-size:18px;font-weight:650;white-space:nowrap;color:#f0f3f8;letter-spacing:.1px}
+.brand span:not(.muted){color:#78a8d9}
+.links{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.links a,.btn{display:inline-flex;align-items:center;justify-content:center;color:#e0e8f2;text-decoration:none;border:1px solid #40516a;padding:7px 11px;border-radius:4px;background:#1a2940;cursor:pointer;transition:background .12s,border-color .12s}
+.links a:hover,.btn:hover{border-color:#6786aa;background:#233650;color:#fff}
+main{max-width:1100px;margin:25px auto;padding:0 22px;min-height:calc(100vh - 165px)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:20px;margin:14px 0}
+.panel h1,.panel h2,.panel h3{margin-top:0;line-height:1.35;letter-spacing:0;font-weight:600;color:#f0f3f8}
+h1{font-size:24px}h2{font-size:19px}h3{font-size:16px}
+p{margin:9px 0}
+.hero{display:flex;justify-content:space-between;gap:18px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:11px}
+.metric{background:#142033;border:1px solid #304159;border-radius:4px;padding:14px}
+.metric b{font-size:24px;display:block;color:#c2d8f0;font-weight:600;line-height:1.4}
+label{display:block;margin:12px 0 5px;color:#d4deea;font-size:13px;font-weight:600}
+input,select,textarea{width:100%;padding:9px 10px;border-radius:4px;background:#101a29;color:var(--text);border:1px solid #40516a;font:inherit;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(93,145,201,.13)}
+input[type=file]{padding:8px;background:#121e30}
+button{font:inherit}
+.btn.primary{background:#315b86;color:#fff;font-weight:600;border-color:#527eac}
+.btn.primary:hover{background:#3b6b9c;border-color:#709ac5}
+.btn.danger{border-color:#71444a;background:#2a2029;color:#f0c5c8}
+.flash{padding:10px 12px;border:1px solid var(--line);border-radius:4px;margin:10px 0;background:#172235}
+.flash.success{border-color:#426b50;color:#b9dfc5;background:#172b24}
+.flash.error{border-color:#79464b;color:#f0bfc2;background:#302126}
+table{width:100%;border-collapse:collapse;overflow-wrap:anywhere;background:transparent}
+th,td{text-align:left;padding:10px 9px;border-bottom:1px solid #34445a;vertical-align:top}
+th{color:#bdc9d8;background:#142033;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+tbody tr:hover{background:#1b2a3e}
+.pill{display:inline-block;padding:2px 7px;border-radius:3px;background:#22344b;border:1px solid #3b506b;color:#d2deed;font-size:12px}
+.small{font-size:12px}
+.hash{font-family:Consolas,"Courier New",monospace;overflow-wrap:anywhere;font-size:12px;color:#c7d8e9}
+.footer{text-align:center;color:#8e9db1;padding:21px 18px;border-top:1px solid #29384d;font-size:12px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:13px}
+ul{padding-left:22px}
+hr{border:0;border-top:1px solid var(--line)}
+@media(max-width:760px){.nav{align-items:flex-start;flex-direction:column;gap:10px}.links{gap:5px}.links a{padding:6px 8px;font-size:13px}main{padding:0 14px;margin:17px auto}.panel{padding:15px}h1{font-size:22px}.grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}table{font-size:12px}th,td{padding:8px 6px}}
 </style></head><body><header class="nav"><div class="brand">Integrity<span>X</span> <span class="muted small">FORENSIC WORKSPACE</span></div><nav class="links">{% if session.get('uid') %}<a href="{{ url_for('dashboard') }}">Dashboard</a><a href="{{ url_for('baseline') }}">Create baseline</a><a href="{{ url_for('verify') }}">Verify</a><a href="{{ url_for('scan') }}">Evidence scan</a><a href="{{ url_for('reports') }}">Reports</a><a href="{{ url_for('logout') }}">Logout</a>{% else %}<a href="{{ url_for('login') }}">Login</a><a href="{{ url_for('register') }}">Register</a>{% endif %}</nav></header><main>{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</main><div class="footer">IntegrityX · SHA-256 evidence integrity workflow · {{ year }}</div></body></html>'''
 
 
@@ -447,8 +497,3 @@ def internal_error(_error):
 
 if __name__ == "__main__":
     app.run(debug=os.environ.get("FLASK_DEBUG") == "1", host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))
-
-    
-    
-       
-
