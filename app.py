@@ -16,6 +16,7 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from jinja2 import DictLoader
 
 # IntegrityX Flask web application - single-file deployment.
 # Existing tables User/Baseline/Check/Audit retain their names and columns.
@@ -174,9 +175,13 @@ BASE = r'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name
 </style></head><body><header class="nav"><div class="brand">Integrity<span>X</span> <span class="muted small">FORENSIC WORKSPACE</span></div><nav class="links">{% if session.get('uid') %}<a href="{{ url_for('dashboard') }}">Dashboard</a><a href="{{ url_for('baseline') }}">Create baseline</a><a href="{{ url_for('verify') }}">Verify</a><a href="{{ url_for('scan') }}">Evidence scan</a><a href="{{ url_for('reports') }}">Reports</a><a href="{{ url_for('logout') }}">Logout</a>{% else %}<a href="{{ url_for('login') }}">Login</a><a href="{{ url_for('register') }}">Register</a>{% endif %}</nav></header><main>{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</main><div class="footer">IntegrityX · SHA-256 evidence integrity workflow · {{ year }}</div></body></html>'''
 
 
+# Register the base HTML as a real Jinja template. Passing its entire source
+# as an extends variable makes Jinja treat the source as a template name.
+app.jinja_loader = DictLoader({"base.html": BASE})
+
 def page(title, body, **context):
-    content = "{% extends base_template %}{% block content %}" + body + "{% endblock %}"
-    return render_template_string(content, base_template=BASE, title=title, year=datetime.now().year, **context)
+    content = "{% extends 'base.html' %}{% block content %}" + body + "{% endblock %}"
+    return render_template_string(content, title=title, year=datetime.now().year, **context)
 
 
 @app.route("/")
@@ -442,3 +447,8 @@ def internal_error(_error):
 
 if __name__ == "__main__":
     app.run(debug=os.environ.get("FLASK_DEBUG") == "1", host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))
+
+    
+    
+       
+
