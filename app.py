@@ -1,9 +1,3 @@
-
-  
-
-
-
-
 import os
 import io
 import csv
@@ -11,6 +5,9 @@ import json
 import hashlib
 import zipfile
 import struct
+import time
+
+import requests
 from datetime import datetime, timezone
 from functools import wraps
 from collections import defaultdict
@@ -139,8 +136,49 @@ SUSPICIOUS_EXTENSIONS = {".exe", ".dll", ".scr", ".bat", ".cmd", ".ps1", ".vbs",
 SUSPICIOUS_TEXT_MARKERS = [b"powershell -enc", b"invoke-expression", b"wscript.shell", b"cmd.exe /c", b"createobject(\"wscript.shell\")"]
 
 
+def identify_file_type(data):
+    """AI-based file identification via Magika when the optional model is installed."""
+    try:
+        from magika import Magika
+        detector = Magika()
+        identified = detector.identify_bytes(data)
+        output = getattr(identified, "output", None)
+        label = getattr(output, "ct_label", None) or getattr(output, "label", None)
+        return str(label) if label else "Identified (label unavailable)"
+    except ImportError:
+        return "Unavailable (install magika package)"
+    except Exception:
+        return "Inconclusive (file type model error)"
+
+
+def validate_known_format(filename, data):
+    """Run deeper validators for common formats; never claims universal corruption detection."""
+    ext = os.path.splitext(filename.lower())[1]
+    issues = []
+    if ext in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff"}:
+        try:
+            from PIL import Image
+            with Image.open(io.BytesIO(data)) as image_obj:
+                image_obj.verify()
+        except ImportError:
+            pass  # signature checks remain available if Pillow is not installed
+        except Exception:
+            issues.append("Image decoder could not verify the file; it may be damaged or malformed")
+    if ext == ".pdf" and data:
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(data), strict=True)
+            if not reader.pages:
+                issues.append("PDF contains no readable pages")
+        except ImportError:
+            pass
+        except Exception:
+            issues.append("PDF parser could not validate the document structure")
+    return issues
+
+
 def analyze_file(filename, data):
-    """Lightweight integrity/type sanity checks, not a full antivirus scan."""
+    """Basic file sanity checks plus optional format validators; not a full antivirus scan."""
     ext = os.path.splitext(filename.lower())[1]
     issues = []
     if not data:
@@ -163,16 +201,55 @@ def analyze_file(filename, data):
                     issues.append("Archive CRC error in member: " + str(bad)[:120])
         except (zipfile.BadZipFile, OSError, EOFError):
             issues.append("Archive/container is corrupt or unreadable")
+    issues.extend(validate_known_format(filename, data))
     if ext in SUSPICIOUS_EXTENSIONS:
         issues.append("Executable or script file type: review carefully before preserving as evidence")
     lower = data[:2 * 1024 * 1024].lower()
     if any(marker in lower for marker in SUSPICIOUS_TEXT_MARKERS):
         issues.append("Potentially suspicious command/script marker found (heuristic)")
-    if issues:
-        status = "REVIEW"
-    else:
-        status = "NO BASIC ISSUES FOUND"
-    return status, issues
+    return ("REVIEW" if issues else "NO BASIC ISSUES FOUND"), issues
+
+
+def virustotal_scan(filename, data):
+    """Optional external scan. Called only after the user explicitly opts in."""
+    api_key = os.environ.get("VIRUSTOTAL_API_KEY", "").strip()
+    if not api_key:
+        return "Not configured (set VIRUSTOTAL_API_KEY)"
+    if len(data) > 32 * 1024 * 1024:
+        return "Not submitted (over 32 MB API upload limit for this workflow)"
+    headers = {"x-apikey": api_key}
+    try:
+        response = requests.post(
+            "https://www.virustotal.com/api/v3/files",
+            headers=headers,
+            files={"file": (filename, data)},
+            timeout=(5, 20),
+        )
+        if response.status_code == 429:
+            return "Rate limited by VirusTotal; retry later"
+        response.raise_for_status()
+        analysis_id = response.json().get("data", {}).get("id")
+        if not analysis_id:
+            return "Submitted; analysis ID not returned"
+        # Keep polling short for serverless request limits; pending is not a clean verdict.
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            check = requests.get(
+                "https://www.virustotal.com/api/v3/analyses/" + analysis_id,
+                headers=headers,
+                timeout=(3, 5),
+            )
+            if check.ok:
+                attributes = check.json().get("data", {}).get("attributes", {})
+                if attributes.get("status") == "completed":
+                    stats = attributes.get("stats", {})
+                    return f"Completed: {stats.get('malicious', 0)} malicious, {stats.get('suspicious', 0)} suspicious, {stats.get('undetected', 0)} undetected"
+            time.sleep(1)
+        return "Submitted; analysis pending (not a clean verdict)"
+    except requests.RequestException as exc:
+        return "Unavailable: VirusTotal request failed (check API key/network/limits)"
+    except (ValueError, KeyError, TypeError):
+        return "Unavailable: unexpected VirusTotal response"
 
 
 # ----- Small responsive UI embedded in this file (no templates folder required) -----
@@ -382,17 +459,20 @@ def scan():
             flash("Select one or more files to scan.", "error")
             return redirect(url_for("scan"))
         seen = defaultdict(list)
+        request_vt = request.form.get("use_virustotal") == "yes"
         for f in files:
             filename = secure_filename(f.filename) or "evidence-file"
             try:
                 data = read_upload(f)
             except ValueError as exc:
-                results.append({"filename": filename, "size": 0, "sha256": "—", "status": "REVIEW", "issues": [str(exc)], "duplicate": False})
+                results.append({"filename": filename, "size": 0, "sha256": "—", "status": "REVIEW", "issues": [str(exc)], "duplicate": False, "file_type": "Unavailable", "virustotal": "Not scanned"})
                 continue
             h = hashlib.sha256(data).hexdigest()
             status, issues = analyze_file(filename, data)
+            file_type = identify_file_type(data)
+            vt_result = virustotal_scan(filename, data) if request_vt else "Not requested"
             seen[(len(data), h)].append(filename)
-            results.append({"filename": filename, "size": len(data), "sha256": h, "status": status, "issues": issues, "duplicate": False})
+            results.append({"filename": filename, "size": len(data), "sha256": h, "status": status, "issues": issues, "duplicate": False, "file_type": file_type, "virustotal": vt_result})
         known_baselines = Baseline.query.filter_by(user_id=session["uid"]).all()
         known_by_hash = {(b.size, b.sha256): b for b in known_baselines}
         for result in results:
@@ -410,13 +490,13 @@ def scan():
         for result in results:
             db.session.add(ScanEvent(user_id=session["uid"], filename=result["filename"], sha256=result["sha256"],
                                      size=result["size"], result=("DUPLICATE" if result["duplicate"] else result["status"]),
-                                     details="; ".join(result["issues"]) or "No basic issues found. Not an antivirus scan.", scanned=stamp()))
+                                     details=("File type: " + result.get("file_type", "Unknown") + "; VirusTotal: " + result.get("virustotal", "Not requested") + "; " + ("; ".join(result["issues"]) or "No basic issues found.")), scanned=stamp()))
         db.session.add(Audit(username=session["username"], event="EVIDENCE_SCAN", at=stamp()))
         db.session.commit()
         duplicates_count = sum(1 for r in results if r["duplicate"])
         review_count = sum(1 for r in results if r["status"] == "REVIEW")
         flash(f"Scanned {len(results)} file(s): {review_count} require review; {duplicates_count} duplicate item(s) detected in this batch.", "success" if not review_count and not duplicates_count else "error")
-    body = '''<section class="panel"><h1>Evidence health & duplicate scan</h1><p class="muted">Supports arbitrary file extensions for hashing. Basic corruption/signature checks apply only to known formats. Duplicate detection is based on exact size + SHA-256 within the files uploaded in this batch. Suspicious markers are heuristics, not antivirus.</p><form method="post" enctype="multipart/form-data"><label>Choose multiple files</label><input type="file" name="files" multiple required><p><button class="btn primary" type="submit">Scan selected evidence</button></p></form></section>{% if results %}<section class="panel"><div class="hero"><h2>Scan results</h2><a class="btn" href="{{ url_for('export_scan_csv') }}">Export scan history CSV</a></div><table><tr><th>File</th><th>Size</th><th>Status</th><th>Duplicate</th><th>SHA-256</th><th>Findings</th></tr>{% for r in results %}<tr><td>{{ r.filename }}</td><td>{{ r.size }} B</td><td><span class="pill">{{ r.status }}</span></td><td>{{ 'YES' if r.duplicate else 'No' }}</td><td class="hash small">{{ r.sha256 }}</td><td>{% if r.issues %}<ul>{% for issue in r.issues %}<li>{{ issue }}</li>{% endfor %}</ul>{% else %}<span class="muted">No basic issues found</span>{% endif %}</td></tr>{% endfor %}</table></section>{% endif %}<section class="panel"><h3>What these checks can and cannot say</h3><ul><li><b>Corruption:</b> checks selected structural markers and archive CRC for supported formats; not every damaged file can be detected.</li><li><b>Duplicate:</b> exact byte-for-byte duplicates in this upload batch.</li><li><b>Suspicious:</b> simple filename and text-marker heuristics only.</li><li><b>Not provided:</b> full malware scanning, proof of authenticity, or automatic image manipulation detection.</li></ul></section>'''
+    body = '''<section class="panel"><h1>Evidence health & duplicate scan</h1><p class="muted">Runs SHA-256 hashing, exact duplicate checks, optional AI-based file identification (Magika when installed), and format-specific validation for supported types.</p><form method="post" enctype="multipart/form-data"><label>Choose multiple files</label><input type="file" name="files" multiple required><label style="display:flex;gap:9px;align-items:flex-start;font-weight:500"><input style="width:auto;margin-top:4px" type="checkbox" name="use_virustotal" value="yes"><span>Also submit these files to VirusTotal for online malware analysis. Only select this if you are authorised to share the evidence with an external service.</span></label><p><button class="btn primary" type="submit">Scan selected evidence</button></p></form><p class="muted small">VirusTotal requires the VIRUSTOTAL_API_KEY environment variable. If not configured, no online scan is performed. Magika requires its package to be included in deployment.</p></section>{% if results %}<section class="panel"><div class="hero"><h2>Scan results</h2><a class="btn" href="{{ url_for('export_scan_csv') }}">Export scan history CSV</a></div><table><tr><th>File</th><th>Size</th><th>Detected type</th><th>Status</th><th>Duplicate</th><th>VirusTotal</th><th>SHA-256</th><th>Findings</th></tr>{% for r in results %}<tr><td>{{ r.filename }}</td><td>{{ r.size }} B</td><td>{{ r.file_type }}</td><td><span class="pill">{{ r.status }}</span></td><td>{{ 'YES' if r.duplicate else 'No' }}</td><td>{{ r.virustotal }}</td><td class="hash small">{{ r.sha256 }}</td><td>{% if r.issues %}<ul>{% for issue in r.issues %}<li>{{ issue }}</li>{% endfor %}</ul>{% else %}<span class="muted">No basic issues found</span>{% endif %}</td></tr>{% endfor %}</table></section>{% endif %}<section class="panel"><h3>What these checks can and cannot say</h3><ul><li><b>Corruption:</b> image/PDF validators and archive CRC checks only cover supported formats; no universal corruption detector exists.</li><li><b>Duplicate:</b> exact byte-for-byte duplicates in this upload batch or matching saved baseline hashes.</li><li><b>File type:</b> Magika model identification is optional and may be unavailable in constrained deployments.</li><li><b>Malware:</b> VirusTotal is optional and external; a pending or undetected result is not proof that a file is safe.</li><li><b>Image manipulation:</b> this does not prove whether an image was edited or AI-generated.</li></ul></section>'''
     return page("Evidence scan", body, results=results)
 
 
