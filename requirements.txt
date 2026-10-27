@@ -2,3 +2,7 @@ Flask>=3.0,<4.0
 Flask-SQLAlchemy>=3.1,<4.0
 Werkzeug>=3.0,<4.0
 psycopg[binary]>=3.2,<4.0
+requests>=2.32,<3.0
+Pillow>=10.0,<13.0
+pypdf>=5.0,<7.0
+magika>=0.6.0
